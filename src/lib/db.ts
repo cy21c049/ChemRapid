@@ -47,18 +47,27 @@ export async function getQuestions(category: string, subtopics: string[], amount
         questionsRef,
         where('category', '==', category),
         where('subtopic', 'in', subtopics),
-        limit(amount)
+        limit(100)
       );
     } else {
       q = query(
         questionsRef,
         where('category', '==', category),
-        limit(amount)
+        limit(100)
       );
     }
     
     const snap = await getDocs(q);
-    return snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    let results = snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    
+    // Local sort by createdAt desc to get newest if available
+    results.sort((a, b) => {
+      const aTime = a.createdAt?.toMillis?.() || 0;
+      const bTime = b.createdAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
+    
+    return results.slice(0, amount);
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'questions');
     return [];

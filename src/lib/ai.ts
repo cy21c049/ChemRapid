@@ -22,19 +22,28 @@ export interface MCQ {
   subtopic: string;
 }
 
-export async function generateMCQs(category: string, subtopics: string[]): Promise<MCQ[]> {
+export async function generateMCQs(category: string, subtopics: string[], avoidQuestions: string[] = []): Promise<MCQ[]> {
   const subtopicStr = subtopics.length > 0 ? subtopics.join(", ") : "Randomized across category";
+  
+  let avoidStr = "";
+  if (avoidQuestions.length > 0) {
+    // Only pass a handful to save tokens, but enough to give context
+    avoidStr = `\n\nPREVIOUSLY ASKED QUESTIONS (CRITICAL: DO NOT REPEAT THESE CONCEPTS OR QUESTIONS):\n${avoidQuestions.slice(0, 20).map((q, i) => `${i + 1}. ${q}`).join("\n")}`;
+  }
+
   const prompt = `YOUR OBJECTIVE:
 Generate exactly 10 MCQs based on the provided input. 
 - Category: '${category}'
 - Specific Subtopics: ${subtopicStr}
 If Specific Subtopics are provided, all 10 questions must be deeply focused on the set of concepts evenly distributed randomly.
 If "Randomized across category", the 10 questions must be randomly distributed across the broader parent Category.
+${avoidStr}
 
 DIFFICULTY & CONSTRAINTS:
 1. HPCL Exam Format: This is a speed-based exam where candidates have roughly 50 seconds per question. Questions must be factual, theoretical, or involve direct, single-step formula applications. 
 2. Prohibited Content: Do NOT generate highly complex, multi-step numerical derivations or overly abstract conceptual problems. 
 3. Practical Focus: Whenever possible, lean towards the analytical and practical side of chemistry (e.g., laboratory techniques, spectroscopy, chromatography, and qualitative analysis), as this is for a Quality Control role.
+4. UNIQUENESS & BREADTH (CRITICAL): Draw inspiration from a wide variety of competitive exam question banks. Do NOT rely on the most common, surface-level examples. Dig deep into the syllabus constraints to find niche, under-tested formulas, concepts, variations, or edge-cases. You MUST generate questions on completely different facets of the subtopics than usual. Avoid asking the same standard textbook questions.
 
 SYLLABUS REFERENCE:
 Inorganic Chemistry: Atomic structure, quantum numbers, electronic configurations, periodic table trends, ionization energy, electron affinity, electronegativity, ionic and covalent bonding, VSEPR theory, hybridization, molecular orbital theory, lattice energy, solubility of ionic compounds, s-block elements, p-block elements, d-block elements, f-block elements, transition metal chemistry, oxidation states, color and magnetic properties, lanthanides and actinides, coordination compounds, Werner's theory, types of isomerism in complexes, ligand types, crystal field theory, crystal field splitting energy, spectrochemical series, bioinorganic chemistry, metal ions in biological systems, metalloproteins, hemoglobin, myoglobin, nitrogen fixation, organometallic compounds, metal-carbon bonds, catalysis (Wilkinson's, Ziegler-Natta), HSAB principle, metallurgical processes, environmental pollution by metals, green chemistry, and nuclear chemistry.
@@ -50,11 +59,22 @@ Make sure all options are plausible but only one is strictly correct. Focus on c
 
   try {
     const ai = getAIClient();
+    const angles = [
+      "Focus heavily on numerical applications, exact values, and analytical techniques rather than pure theory.",
+      "Focus heavily on exceptions to general rules, edge-cases, and deep theoretical principles.",
+      "Focus heavily on specific reagent roles, intermediate structures, and less widely taught corollaries.",
+      "Focus heavily on historical context, specific named reactions, and exact reaction conditions (temperature, catalysts, pressure).",
+      "Focus heavily on extreme conditions, rare compounds, and graphical interpretations of data or thermodynamic plots.",
+      "Focus heavily on real-world industrial applications, qualitative analysis color/precipitate changes, and specific physical constants.",
+      "Focus heavily on tricky wordings, common misconceptions, identifying false statements among true ones, and multi-step synthesis pathways."
+    ];
+    const angle = angles[Math.floor(Math.random() * angles.length)];
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt + `\n\nEnsure this specific set of questions is highly unique and differs from previously generated sets. (Random seed for unique generation: ${Math.random()})`,
+      contents: prompt + `\n\nCRITICAL UNIQUENESS DIRECTIVE: ${angle}\nEnsure this specific set of questions is completely unique and differs from any typical or previously generated sets. Do not use textbook cliches. (Random seed for unique generation: ${Math.random()})\nSystem Time: ${Date.now()}`,
       config: {
-        temperature: 0.8,
+        temperature: 1.5,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,

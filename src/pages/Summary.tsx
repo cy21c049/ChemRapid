@@ -4,15 +4,16 @@ import { useSessionStore } from "../store";
 import { doc, getDoc } from "firebase/firestore";
 import { db, OperationType, handleFirestoreError } from "../lib/firebase";
 import { getAttempts } from "../lib/db";
-import { CheckCircle, XCircle, ArrowRight, RotateCcw } from "lucide-react";
+import { CheckCircle, XCircle, ArrowRight, RotateCcw, Home } from "lucide-react";
 import { renderWithLatex } from "../components/LatexText";
 import { cn } from "../lib/utils";
 import { BookmarkButton } from "../components/BookmarkButton";
+import { CATEGORIES } from "../lib/constants";
 
 const AutoLatex = ({ text }: { text: string }) => <>{renderWithLatex(text)}</>;
 
 export default function Summary() {
-  const { currentSessionId, questions, endSession } = useSessionStore();
+  const { currentSessionId, questions, endSession, category, subtopics } = useSessionStore();
   const navigate = useNavigate();
   const [score, setScore] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<any[]>([]);
@@ -167,19 +168,28 @@ export default function Summary() {
           <button
             onClick={() => {
               endSession();
-              navigate('/home');
+              navigate('/dashboard');
             }}
             className="flex-1 bg-slate-800 text-slate-200 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"
           >
-            <RotateCcw size={20} />
-            Try Another Topic
+            <Home size={20} />
+            Main Menu
           </button>
           <button
-            onClick={handleFinish}
-            className="flex-1 bg-teal-500 text-slate-950 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-teal-400 transition-colors shadow-[0_0_20px_rgba(20,184,166,0.2)]"
+            onClick={() => {
+              const currentCat = category;
+              const currentSubs = subtopics;
+              const catData = CATEGORIES.find(c => c.title === currentCat);
+              if (catData) {
+                navigate(`/category/${catData.id}`, { state: { retry: true, subtopics: currentSubs } });
+              } else {
+                navigate('/dashboard');
+              }
+            }}
+            className="flex-[2] bg-teal-500 text-slate-950 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-teal-400 transition-colors shadow-[0_0_20px_rgba(20,184,166,0.2)]"
           >
-            Finish Dashboard
-            <ArrowRight size={20} />
+            <RotateCcw size={20} />
+            Try 10 More Similar
           </button>
         </div>
       </div>

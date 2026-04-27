@@ -1,7 +1,7 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { CATEGORIES } from "../lib/constants";
 import { ArrowLeft, Sparkles, Loader2, Check } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore, useSessionStore } from "../store";
 import { getQuestions, saveQuestions, createSession } from "../lib/db";
 import { generateMCQs } from "../lib/ai";
@@ -11,6 +11,7 @@ import { cn } from "../lib/utils";
 export default function SubtopicPicker() {
   const { category } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const user = useAuthStore(state => state.user);
   const startSession = useSessionStore(state => state.startSession);
@@ -22,21 +23,10 @@ export default function SubtopicPicker() {
     return <div className="p-6 text-center text-red-500">Category not found</div>;
   }
 
-  const toggleSubtopic = (sub: string) => {
-    setSelectedSubtopics(prev => {
-      if (prev.includes(sub)) return prev.filter((s) => s !== sub);
-      if (prev.length >= 10) {
-        toast.error("You can select up to 10 topics max.");
-        return prev;
-      }
-      return [...prev, sub];
-    });
-  };
-
-  const startPractice = async (isTrailMix = false) => {
+  const startPractice = async (isTrailMix = false, overrideSubtopics?: string[]) => {
     if (!user) return;
     
-    let targetSubtopics = isTrailMix ? [] : selectedSubtopics;
+    let targetSubtopics = isTrailMix ? [] : (overrideSubtopics || selectedSubtopics);
     if (!isTrailMix && targetSubtopics.length === 0) {
       toast.error("Please select at least one subtopic.");
       return;
@@ -44,7 +34,11 @@ export default function SubtopicPicker() {
 
     setLoading(true);
     try {
-      let bankQuestions = await getQuestions(catData.title, targetSubtopics, 10);
+      let bankQuestions = await getQuestions(catData.title, targetSubtopics, 30);
+      
+      // Shuffle bank questions so we don't always get the exact same ones
+      bankQuestions.sort(() => Math.random() - 0.5);
+
       let finalQuestions: any[] = [];
 
       let amountFromBank = Math.min(bankQuestions.length, 5); // Take up to 5 from bank to ensure fresh AI mix
@@ -52,7 +46,11 @@ export default function SubtopicPicker() {
       let needed = 10 - amountFromBank;
 
       toast(`Crafting ${needed} fresh questions...`);
-      const newQs = await generateMCQs(catData.title, targetSubtopics);
+      
+      // Extract questions to avoid repeating
+      const avoidList = bankQuestions.map((q: any) => q.question);
+
+      const newQs = await generateMCQs(catData.title, targetSubtopics, avoidList);
       
       const newQsMapped = newQs.map(q => ({
         ...q,
@@ -77,7 +75,7 @@ export default function SubtopicPicker() {
       });
 
       if (sessionId) {
-        startSession(sessionId, finalQuestions);
+        startSession(sessionId, finalQuestions, catData.title, targetSubtopics);
         navigate('/session');
       }
 
@@ -86,6 +84,31 @@ export default function SubtopicPicker() {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (location.state?.retry && catData && user && !loading) {
+      const targetSubtopics = location.state.subtopics || [];
+      setSelectedSubtopics(targetSubtopics);
+      
+      // Remove retry from history to avoid loops
+      navigate(location.pathname, { replace: true, state: {} });
+      
+      // Fire it right away with the given subtopics
+      startPractice(targetSubtopics.length === 0, targetSubtopics);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, catData, user]);
+
+  const toggleSubtopic = (sub: string) => {
+    setSelectedSubtopics(prev => {
+      if (prev.includes(sub)) return prev.filter((s) => s !== sub);
+      if (prev.length >= 10) {
+        toast.error("You can select up to 10 topics max.");
+        return prev;
+      }
+      return [...prev, sub];
+    });
   };
 
   if (loading) {
