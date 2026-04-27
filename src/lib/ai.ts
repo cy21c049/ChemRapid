@@ -93,6 +93,9 @@ Make sure all options are plausible but only one is strictly correct. Focus on c
     return data;
   } catch (error) {
     console.error("AI Generation Error:", error);
-    throw new Error("Failed to generate questions. Please try again.");
+    if (error instanceof Error && error.message.includes("API configuration is missing")) {
+      throw new Error("Missing Gemini API Key. Please add the GEMINI_API_KEY to your Vercel project Environment Variables and redeploy.");
+    }
+    throw new Error(error instanceof Error ? `Generation failed: ${error.message}` : "Failed to generate questions. Please try again.");
   }
 }
