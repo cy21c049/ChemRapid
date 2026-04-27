@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "User profile containing display name, stats, and streak information.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "joinedAt": { "type": "number" },
+        "ownerId": { "type": "string" },
+        "currentStreak": { "type": "number" },
+        "bestStreak": { "type": "number" },
+        "lastPracticeDate": { "type": "string" },
+        "totalAttempted": { "type": "number" }
+      },
+      "required": ["ownerId", "joinedAt"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "An AI-generated MCQ.",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "subtopic": { "type": "string" },
+        "question": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "correctAnswer": { "type": "string" },
+        "explanation": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["category", "subtopic", "question", "options", "correctAnswer", "explanation", "createdAt"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A quiz attempt by a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "category": { "type": "string" },
+        "subtopic": { "type": "string" },
+        "score": { "type": "number" },
+        "total": { "type": "number" },
+        "startedAt": { "type": "number" },
+        "finishedAt": { "type": "number" }
+      },
+      "required": ["userId", "category", "subtopic", "score", "total", "startedAt"]
+    },
+    "Attempt": {
+      "title": "Attempt",
+      "description": "A single question attempt within a session.",
+      "type": "object",
+      "properties": {
+        "questionId": { "type": "string" },
+        "selectedOption": { "type": "string" },
+        "isCorrect": { "type": "boolean" },
+        "timeTakenSeconds": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["questionId", "isCorrect", "timeTakenSeconds", "createdAt"]
+    }
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "A saved question bookmark by an user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "questionId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/bookmarks/{bookmarkId}": {
+      "schema": { "$ref": "#/entities/Bookmark" },
+      "description": "Bookmarks of questions saved by users"
+    },
+    "/profiles/{userId}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "User profiles"
+    },
+    "/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Global bank of AI-generated MCQs"
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/Session" },
+      "description": "User quiz sessions"
+    },
+    "/sessions/{sessionId}/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/Attempt" },
+      "description": "Individual question attempts per session"
+    }
+  }
+}

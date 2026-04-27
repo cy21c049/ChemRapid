@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global primitives
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // Validation definitions
+    function isValidProfile(data) {
+      return data.keys().hasAll(['ownerId', 'joinedAt']) &&
+             data.ownerId == request.auth.uid &&
+             data.joinedAt is number;
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['category', 'subtopic', 'question', 'options', 'correctAnswer', 'explanation', 'createdAt']) &&
+             data.category is string && data.category.size() <= 100 &&
+             data.subtopic is string && data.subtopic.size() <= 100 &&
+             data.question is string && data.question.size() <= 5000 &&
+             data.options is list && data.options.size() == 4 && data.options[0] is string &&
+             data.correctAnswer is string && data.correctAnswer.size() <= 500 &&
+             data.explanation is string && data.explanation.size() <= 5000 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['userId', 'category', 'subtopic', 'score', 'total', 'startedAt']) &&
+             data.userId == request.auth.uid &&
+             data.category is string && data.category.size() <= 100 &&
+             data.subtopic is string && data.subtopic.size() <= 100 &&
+             data.score is number && data.score >= 0 &&
+             data.total is number && data.total > 0 &&
+             data.startedAt is number;
+    }
+
+    function isValidAttempt(data) {
+      return data.keys().hasAll(['questionId', 'isCorrect', 'timeTakenSeconds', 'createdAt']) &&
+             data.questionId is string && data.questionId.size() <= 128 &&
+             data.isCorrect is bool &&
+             data.timeTakenSeconds is number && data.timeTakenSeconds >= 0 &&
+             data.createdAt == request.time;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Profiles
+    match /profiles/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidProfile(incoming());
+      allow update: if isOwner(userId) && existing().ownerId == request.auth.uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'displayName', 'avatarUrl', 'currentStreak', 'bestStreak', 'lastPracticeDate', 'totalAttempted'
+                    ]);
+    }
+
+    // Questions
+    match /questions/{questionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(questionId) && isValidQuestion(incoming());
+      allow update: if false; // Immutable global database
+    }
+
+    // Sessions
+    match /sessions/{sessionId} {
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(sessionId) && isValidSession(incoming());
+      allow update: if isSignedIn() && existing().userId == request.auth.uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['finishedAt', 'score']);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      match /attempts/{attemptId} {
+        // Can read if owns parent session
+        allow read: if isSignedIn() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
+        allow create: if isSignedIn() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid &&
+                      isValidId(attemptId) && isValidAttempt(incoming());
+        allow list: if isSignedIn(); // Covered by parent restriction typically, but adding strict checks is better.
+      }
+    }
+    // Bookmarks
+    match /bookmarks/{bookmarkId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+  }
+}
