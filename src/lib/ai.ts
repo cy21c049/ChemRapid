@@ -1,6 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiClient: GoogleGenAI | null = null;
+
+function getAIClient() {
+  if (!aiClient) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      console.error("GEMINI_API_KEY is not defined in the environment variables.");
+      throw new Error("API configuration is missing. Please add GEMINI_API_KEY to your environment variables.");
+    }
+    aiClient = new GoogleGenAI({ apiKey: key });
+  }
+  return aiClient;
+}
 
 export interface MCQ {
   question: string;
@@ -37,6 +49,7 @@ Use LaTeX for chemical formulas and equations, e.g., $H_2O$ or $\\Delta H = -200
 Make sure all options are plausible but only one is strictly correct. Focus on conceptual understanding, mechanism, or calculation typical of HPCL Junior Executive QC exams.`;
 
   try {
+    const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: "gemini-3.1-pro-preview",
       contents: prompt,
