@@ -52,8 +52,9 @@ Make sure all options are plausible but only one is strictly correct. Focus on c
     const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt,
+      contents: prompt + `\n\nEnsure this specific set of questions is highly unique and differs from previously generated sets. (Random seed for unique generation: ${Math.random()})`,
       config: {
+        temperature: 0.8,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
