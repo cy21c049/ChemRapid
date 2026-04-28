@@ -57,9 +57,8 @@ Others: Qualitative analysis of inorganic salts, detection of acidic and basic r
 Use LaTeX for chemical formulas and equations, e.g., $H_2O$ or $\\Delta H = -200$ kJ/mol.
 Make sure all options are plausible but only one is strictly correct. Focus on conceptual understanding, mechanism, or calculation typical of HPCL Junior Executive QC exams.`;
 
-  try {
-    const ai = getAIClient();
-    const angles = [
+  const ai = getAIClient();
+  const angles = [
       "Focus heavily on numerical applications, exact values, and analytical techniques rather than pure theory.",
       "Focus heavily on exceptions to general rules, edge-cases, and deep theoretical principles.",
       "Focus heavily on specific reagent roles, intermediate structures, and less widely taught corollaries.",
@@ -70,53 +69,70 @@ Make sure all options are plausible but only one is strictly correct. Focus on c
     ];
     const angle = angles[Math.floor(Math.random() * angles.length)];
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt + `\n\nCRITICAL UNIQUENESS DIRECTIVE: ${angle}\nEnsure this specific set of questions is completely unique and differs from any typical or previously generated sets. Do not use textbook cliches. (Random seed for unique generation: ${Math.random()})\nSystem Time: ${Date.now()}`,
-      config: {
-        temperature: 1.5,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              question: {
-                type: Type.STRING,
-                description: "The chemistry question text, with robust use of inline LaTeX (e.g. $...$) for formulas and symbols.",
-              },
-              options: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Four plausible answer options (including LaTeX if needed). Must be exactly 4.",
-              },
-              correctAnswer: {
-                type: Type.STRING,
-                description: "The correct answer, must match one of the options exactly.",
-              },
-              explanation: {
-                type: Type.STRING,
-                description: "A step-by-step rigorous explanation of the answer, using LaTeX.",
-              },
-              subtopic: {
-                 type: Type.STRING,
-                 description: "The specific subtopic this question belongs to.",
-              }
-            },
-            required: ["question", "options", "correctAnswer", "explanation", "subtopic"],
-          },
-        },
-      },
-    });
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        // Fallback to gemini-2.0-flash after 3 attempts
+        const currentModel = attempt <= 3 ? "gemini-2.5-flash" : "gemini-2.0-flash";
+        console.log(`AI Generation attempt ${attempt} using ${currentModel}...`);
 
-    const jsonStr = response.text?.trim() || "[]";
-    const data = JSON.parse(jsonStr) as MCQ[];
-    return data;
-  } catch (error) {
-    console.error("AI Generation Error:", error);
-    if (error instanceof Error && error.message.includes("API configuration is missing")) {
-      throw new Error("Missing Gemini API Key. Please add the GEMINI_API_KEY to your Vercel project Environment Variables and redeploy.");
+        const response = await ai.models.generateContent({
+          model: currentModel,
+          contents: prompt + `\n\nCRITICAL UNIQUENESS DIRECTIVE: ${angle}\nEnsure this specific set of questions is completely unique and differs from any typical or previously generated sets. Do not use textbook cliches. (Random seed for unique generation: ${Math.random()})\nSystem Time: ${Date.now()}`,
+          config: {
+            temperature: 1.5 + (attempt - 1) * 0.1, // Increase temp slightly on retries for variety if it matters
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  question: {
+                    type: Type.STRING,
+                    description: "The chemistry question text, with robust use of inline LaTeX (e.g. $...$) for formulas and symbols.",
+                  },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "Four plausible answer options (including LaTeX if needed). Must be exactly 4.",
+                  },
+                  correctAnswer: {
+                    type: Type.STRING,
+                    description: "The correct answer, must match one of the options exactly.",
+                  },
+                  explanation: {
+                    type: Type.STRING,
+                    description: "A step-by-step rigorous explanation of the answer, using LaTeX.",
+                  },
+                  subtopic: {
+                     type: Type.STRING,
+                     description: "The specific subtopic this question belongs to.",
+                  }
+                },
+                required: ["question", "options", "correctAnswer", "explanation", "subtopic"],
+              },
+            },
+          },
+        });
+
+        const jsonStr = response.text?.trim() || "[]";
+        const data = JSON.parse(jsonStr) as MCQ[];
+        return data;
+      } catch (error) {
+        lastError = error;
+        console.warn(`AI Generation attempt ${attempt} failed:`, error);
+        
+        if (error instanceof Error && error.message.includes("API configuration is missing")) {
+          throw new Error("Missing Gemini API Key. Please add the GEMINI_API_KEY to your Vercel project Environment Variables and redeploy.");
+        }
+        
+        if (attempt < 5) {
+          // Wait before retrying (exponential backoff but cap it)
+          const delay = Math.min(Math.pow(2, attempt) * 1000, 10000); // Max delay of 10 seconds between attempts
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
-    throw new Error(error instanceof Error ? `Generation failed: ${error.message}` : "Failed to generate questions. Please try again.");
-  }
+
+    throw new Error(lastError instanceof Error ? `Generation failed after 5 attempts: ${lastError.message}` : "Failed to generate questions after 5 attempts. Please try again.");
 }
