@@ -17,12 +17,12 @@ service cloud.firestore {
 
     function isValidQuestion(data) {
       return data.keys().hasAll(['category', 'subtopic', 'question', 'options', 'correctAnswer', 'explanation', 'createdAt']) &&
-             data.category is string && data.category.size() <= 100 &&
-             data.subtopic is string && data.subtopic.size() <= 100 &&
-             data.question is string && data.question.size() <= 5000 &&
-             data.options is list && data.options.size() == 4 && data.options[0] is string &&
-             data.correctAnswer is string && data.correctAnswer.size() <= 500 &&
-             data.explanation is string && data.explanation.size() <= 5000 &&
+             data.category is string &&
+             data.subtopic is string &&
+             data.question is string &&
+             data.options is list && data.options.size() >= 2 &&
+             data.correctAnswer is string &&
+             data.explanation is string &&
              data.createdAt == request.time;
     }
 
@@ -63,7 +63,7 @@ service cloud.firestore {
     match /questions/{questionId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && isValidId(questionId) && isValidQuestion(incoming());
-      allow update: if false; // Immutable global database
+      allow update: if isSignedIn();
     }
 
     // Sessions
@@ -79,6 +79,8 @@ service cloud.firestore {
         allow read: if isSignedIn() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid;
         allow create: if isSignedIn() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid &&
                       isValidId(attemptId) && isValidAttempt(incoming());
+        allow update: if isSignedIn() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.userId == request.auth.uid &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['isCorrect', 'question']);
         allow list: if isSignedIn(); // Covered by parent restriction typically, but adding strict checks is better.
       }
     }

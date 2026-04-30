@@ -7,6 +7,8 @@ import { ArrowLeft, CheckCircle, XCircle } from "lucide-react";
 import { renderWithLatex } from "../components/LatexText";
 import { cn } from "../lib/utils";
 import { BookmarkButton } from "../components/BookmarkButton";
+import { ReportButton } from "../components/ReportButton";
+import { NotebookLLMButton } from "../components/NotebookLLMButton";
 
 const AutoLatex = ({ text }: { text: string }) => <>{renderWithLatex(text)}</>;
 
@@ -16,36 +18,62 @@ export default function SessionReview() {
   const [session, setSession] = useState<any>(null);
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [coachingPlan, setCoachingPlan] = useState<any>(null);
+  const [generatingCoach, setGeneratingCoach] = useState(false);
+
+  const loadData = async () => {
+    if (!sessionId) return;
+    const sesh = await getSession(sessionId);
+    if (sesh) {
+      setSession(sesh);
+      const atts = await getAttempts(sessionId);
+      
+      const enrichedAtts = await Promise.all(atts.map(async (att: any) => {
+        if (!att.question && att.questionId) {
+          try {
+            const qSnap = await getDoc(doc(db, 'questions', att.questionId));
+            if (qSnap.exists()) {
+              return { ...att, question: { id: qSnap.id, ...qSnap.data() } };
+            }
+          } catch (e) {
+            console.error("Failed to load past question data:", e);
+          }
+        }
+        if (att.question) return att;
+        return null;
+      }));
+      
+      const validAtts = enrichedAtts.filter(a => a !== null);
+      setAttempts(validAtts);
+
+      if ((sesh as any).category === "Full Mock Test" && !coachingPlan) {
+         generateMockCoach(sesh, validAtts);
+      }
+    }
+  };
+
+  const generateMockCoach = async (sesh: any, atts: any[]) => {
+    try {
+       setGeneratingCoach(true);
+       const { generateCoachingPlan } = await import('../lib/ai');
+       // Create a textual summary of this mock test
+       let summary = `Mock Test Score: ${sesh.score}/${sesh.total}\n\n`;
+       summary += atts.map((att) => {
+          return `Question: ${att.question.question}\nCorrect Answer: ${att.question.correctAnswer}\nStudent Selected: ${att.selectedAnswer || 'None'}\nResult: ${att.isCorrect ? 'Correct' : 'Incorrect'}\nSubtopic: ${att.question.subtopic}\n`;
+       }).join('\n');
+       
+       const plan = await generateCoachingPlan(summary);
+       setCoachingPlan(plan);
+    } catch (e) {
+       console.error("Failed to generate coach plan for mock:", e);
+    } finally {
+       setGeneratingCoach(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      if (!sessionId) return;
-      setLoading(true);
-      const sesh = await getSession(sessionId);
-      if (sesh) {
-        setSession(sesh);
-        const atts = await getAttempts(sessionId);
-        
-        // Backwards compatibility: fetch question data if not embedded
-        const enrichedAtts = await Promise.all(atts.map(async (att: any) => {
-          if (!att.question && att.questionId) {
-            try {
-              const qSnap = await getDoc(doc(db, 'questions', att.questionId));
-              if (qSnap.exists()) {
-                return { ...att, question: { id: qSnap.id, ...qSnap.data() } };
-              }
-            } catch (e) {
-              console.error("Failed to load past question data:", e);
-            }
-          }
-          return att;
-        }));
-        
-        setAttempts(enrichedAtts);
-      }
-      setLoading(false);
-    }
-    load();
+    setLoading(true);
+    loadData().then(() => setLoading(false));
   }, [sessionId]);
 
   if (loading) {
@@ -107,6 +135,54 @@ export default function SessionReview() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-100">Performance Review</h1>
         </div>
 
+        {generatingCoach && (
+          <div className="bg-slate-900/40 border border-indigo-500/30 rounded-2xl p-6 text-center animate-pulse">
+             <div className="text-indigo-400 font-bold mb-2">AI Coach is analyzing your Mock Test...</div>
+             <p className="text-sm text-slate-400">Please wait while we generate a breakdown of your strengths, weaknesses, and a personalized action plan.</p>
+          </div>
+        )}
+
+        {coachingPlan && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="h-[1px] flex-1 bg-slate-800"></div>
+              <h2 className="text-xs font-mono font-bold tracking-widest uppercase text-indigo-500">Mock Test Analysis</h2>
+              <div className="h-[1px] flex-1 bg-slate-800"></div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-slate-900/60 p-6 md:p-8 rounded-3xl border border-teal-500/20">
+                <h3 className="text-lg font-bold text-teal-400 mb-6 flex items-center gap-2"><CheckCircle size={20}/> Strength Areas</h3>
+                <div className="space-y-6">
+                  {coachingPlan.strengths.map((str: any, i: number) => (
+                    <div key={i} className="space-y-2">
+                       <h4 className="font-bold text-slate-200">{str.topic}</h4>
+                       <p className="text-sm text-slate-400">{str.description}</p>
+                       <div className="bg-teal-500/10 p-3 rounded-xl border border-teal-500/20 text-xs text-teal-300">
+                         <strong>Blind Spot to Check:</strong> {str.blindSpots} <br/>
+                         <strong>Resource:</strong> {str.resourceSuggestion}
+                       </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 p-6 md:p-8 rounded-3xl border border-rose-500/20">
+                <h3 className="text-lg font-bold text-rose-400 mb-6 flex items-center gap-2"><XCircle size={20}/> Weakness Areas</h3>
+                <div className="space-y-6">
+                  {coachingPlan.weaknesses.map((wk: any, i: number) => (
+                    <div key={i} className="space-y-2">
+                       <h4 className="font-bold text-slate-200">{wk.topic}</h4>
+                       <p className="text-sm text-slate-400">{wk.description}</p>
+                       <p className="text-xs text-rose-300 bg-rose-500/10 p-2 rounded block border border-rose-500/20">{wk.actionPlan}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-6 pt-6">
           <div className="flex items-center gap-4">
             <div className="h-[1px] flex-1 bg-slate-800"></div>
@@ -120,7 +196,16 @@ export default function SessionReview() {
             return (
               <div key={i} className="bg-slate-900/60 p-6 md:p-8 rounded-3xl border border-slate-700/50 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-6 opacity-5 font-mono text-8xl font-black pointer-events-none text-slate-100">{i + 1}</div>
-                <BookmarkButton question={q} className="absolute top-4 right-4 z-20" />
+                <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+                  <NotebookLLMButton question={q} />
+                  <ReportButton 
+                    question={q} 
+                    sessionId={sessionId} 
+                    attemptId={att.id} 
+                    onResolved={loadData} 
+                  />
+                  <BookmarkButton question={q} />
+                </div>
                 <div className="mb-4 text-[10px] font-bold uppercase tracking-widest text-teal-500 flex items-center justify-between">
                   <span>Question {i + 1}</span>
                   {att.isCorrect ? <span className="text-teal-400 bg-teal-500/10 px-2 py-0.5 rounded text-[10px]">CORRECT</span> : <span className="text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded text-[10px]">INCORRECT</span>}

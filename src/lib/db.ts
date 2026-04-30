@@ -78,12 +78,18 @@ export async function saveQuestions(questions: any[], category: string) {
   const promises = questions.map(async (qData) => {
     try {
       const qRef = doc(collection(db, 'questions'));
-      await setDoc(qRef, {
-        ...qData,
-        category,
+      const qToSave = {
+        question: typeof qData.question === 'string' ? qData.question : '',
+        options: Array.isArray(qData.options) ? qData.options.map(String) : [],
+        correctAnswer: typeof qData.correctAnswer === 'string' ? qData.correctAnswer : '',
+        explanation: typeof qData.explanation === 'string' ? qData.explanation : '',
+        category: typeof category === 'string' ? category : '',
+        subtopic: typeof qData.subtopic === 'string' ? qData.subtopic : category,
         createdAt: serverTimestamp(),
-      });
-      return { id: qRef.id, ...qData, category };
+      };
+      console.log('Attempting to save question:', JSON.stringify({ ...qToSave, createdAt: 'serverTimestamp' }));
+      await setDoc(qRef, qToSave);
+      return { id: qRef.id, ...qToSave, createdAt: new Date() };
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'questions');
     }
@@ -103,6 +109,53 @@ export async function createSession(userId: string, data: any) {
     return docRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'sessions');
+  }
+}
+
+export async function handleReportResult(
+  sessionId: string, 
+  attemptId: string, 
+  questionId: string, 
+  creditUser: boolean, 
+  updatedQuestion?: any
+) {
+  try {
+    if (updatedQuestion) {
+      const qRef = doc(db, 'questions', questionId);
+      await updateDoc(qRef, {
+        question: updatedQuestion.question,
+        options: updatedQuestion.options,
+        correctAnswer: updatedQuestion.correctAnswer,
+        explanation: updatedQuestion.explanation,
+        subtopic: updatedQuestion.subtopic,
+      });
+    }
+
+    const attRef = doc(db, `sessions/${sessionId}/attempts/${attemptId}`);
+    const attUpdates: any = {};
+    if (updatedQuestion) {
+      attUpdates.question = { ...updatedQuestion, id: questionId };
+    }
+    if (creditUser) {
+      attUpdates.isCorrect = true;
+    }
+    
+    if (Object.keys(attUpdates).length > 0) {
+      await updateDoc(attRef, attUpdates);
+    }
+
+    if (creditUser) {
+      const sRef = doc(db, 'sessions', sessionId);
+      const sSnap = await getDoc(sRef);
+      if (sSnap.exists()) {
+        const sData = sSnap.data();
+        await updateDoc(sRef, {
+          score: (sData.score || 0) + 1
+        });
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, 'report handling');
   }
 }
 

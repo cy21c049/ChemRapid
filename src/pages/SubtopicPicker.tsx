@@ -1,23 +1,82 @@
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { CATEGORIES } from "../lib/constants";
+import { CATEGORIES, EXACT_SYLLABUS_TOPICS } from "../lib/constants";
 import { ArrowLeft, Sparkles, Loader2, Check } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useAuthStore, useSessionStore } from "../store";
+import { useAuthStore, useSessionStore, useCoachStore } from "../store";
 import { getQuestions, saveQuestions, createSession } from "../lib/db";
 import { generateMCQs } from "../lib/ai";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
+
+const CHEMISTRY_FACTS: Record<string, string[]> = {
+  "Inorganic Chemistry": [
+    "The 4f electrons have poor shielding effect, leading to the Lanthanide Contraction.",
+    "A chelating ligand forms a ring structure with the central metal ion, increasing stability.",
+    "According to VSEPR theory, lone pair-lone pair repulsions are greater than bond pair-bond pair repulsions.",
+    "Paramagnetic substances are weakly attracted by a magnetic field because of unpaired electrons.",
+    "Hard-Soft Acid-Base (HSAB) principle states that hard acids prefer hard bases, and soft acids prefer soft bases.",
+    "Octahedral complexes with strong-field ligands usually form low-spin complexes."
+  ],
+  "Organic Chemistry": [
+    "Lewis acids are electron-pair acceptors, while Lewis bases are electron-pair donors.",
+    "Carbocation stability follows the order: 3° > 2° > 1° > methyl.",
+    "SN2 reactions proceed via a concerted mechanism with complete stereochemical inversion.",
+    "Aromatic compounds must be cyclic, planar, fully conjugated, and follow Hückel's 4n+2 rule.",
+    "Enantiomers are chiral molecules that are non-superimposable mirror images of one another.",
+    "Electrophilic aromatic substitution is directed by the substituent already attached to the ring."
+  ],
+  "Physical Chemistry": [
+    "The value of Planck's constant is approximately 6.626 × 10⁻³⁴ J·s.",
+    "Entropy (S) is a measure of the disorder or randomness of a closed system.",
+    "A catalyst lowers the activation energy of a reaction but does not change its equilibrium.",
+    "The Heisenberg uncertainty principle states that you cannot simultaneously know a particle's exact position and momentum.",
+    "Raoult's law states that the partial vapor pressure of a component is directly proportional to its mole fraction.",
+    "The standard enthalpy of formation of an element in its standard state is zero."
+  ],
+  "Analytical Chemistry": [
+    "Phenolphthalein is a pH indicator that is colorless in acidic solutions and pink in basic solutions.",
+    "Beer-Lambert Law states that absorbance is directly proportional to the concentration of the absorbing species.",
+    "Chromatography separates mixtures based on differential affinities between a stationary phase and a mobile phase.",
+    "A buffer solution resists drastic changes in pH when small amounts of acid or base are added.",
+    "Gas chromatography is widely used to separate vaporizable compounds without decomposition."
+  ]
+};
+
+const GENERAL_FACTS = [
+  "The value of Planck's constant is approximately 6.626 × 10⁻³⁴ J·s.",
+  "Lewis acids are electron-pair acceptors, while Lewis bases are electron-pair donors.",
+  "A buffer solution resists drastic changes in pH when small amounts of acid or base are added.",
+  "Electronegativity generally increases across a period and decreases down a group."
+];
 
 export default function SubtopicPicker() {
   const { category } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
+  const [loadingFact, setLoadingFact] = useState<string>("");
   const user = useAuthStore(state => state.user);
   const startSession = useSessionStore(state => state.startSession);
   const [selectedSubtopics, setSelectedSubtopics] = useState<string[]>([]);
 
   const catData = CATEGORIES.find(c => c.id === category);
+
+  useEffect(() => {
+    if (loading && catData) {
+      const facts = CHEMISTRY_FACTS[catData.title] || GENERAL_FACTS;
+      
+      const pickRandomFact = () => {
+        const randomIdx = Math.floor(Math.random() * facts.length);
+        setLoadingFact(facts[randomIdx]);
+      };
+      
+      pickRandomFact(); // initial
+      
+      const interval = setInterval(pickRandomFact, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [loading, catData]);
 
   if (!catData) {
     return <div className="p-6 text-center text-red-500">Category not found</div>;
@@ -49,8 +108,19 @@ export default function SubtopicPicker() {
       
       // Extract questions to avoid repeating
       const avoidList = bankQuestions.map((q: any) => q.question);
+      
+      // If trail mix, compute priority topics to fix weaknesses and cover uncovered topics
+      let priorityTopics: string[] = [];
+      if (isTrailMix) {
+         const { weakTopics, uncoveredTopics } = useCoachStore.getState();
+         const categoryTopics = EXACT_SYLLABUS_TOPICS[catData.title] || [];
+         priorityTopics = [
+            ...weakTopics.filter(t => categoryTopics.includes(t)),
+            ...uncoveredTopics.filter(t => categoryTopics.includes(t))
+         ].slice(0, 10); // Limit to 10 subtopics so AI isn't overwhelmed
+      }
 
-      const newQs = await generateMCQs(catData.title, targetSubtopics, avoidList);
+      const newQs = await generateMCQs(catData.title, targetSubtopics, avoidList, priorityTopics);
       
       const newQsMapped = newQs.map(q => ({
         ...q,
@@ -113,11 +183,28 @@ export default function SubtopicPicker() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#020617] text-slate-100 font-sans flex flex-col items-center justify-center p-6 text-center relative">
+      <div className="min-h-screen bg-[#020617] text-slate-100 font-sans flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,_rgba(20,184,166,0.1)_0%,_transparent_50%)] pointer-events-none"></div>
         <Loader2 className="w-12 h-12 text-teal-500 animate-spin mb-4 relative z-10" />
-        <h2 className="text-xl font-bold relative z-10">Crafting IIT-JAM-grade questions...</h2>
-        <p className="text-slate-400 mt-2 relative z-10">Summoning the chemistry AI.</p>
+        <h2 className="text-xl font-bold relative z-10 mb-6">Crafting IIT-JAM-grade questions...</h2>
+        
+        <div className="relative z-10 max-w-md w-full mx-auto p-5 bg-slate-900/60 rounded-xl border border-teal-500/20 backdrop-blur-sm shadow-[0_0_15px_rgba(20,184,166,0.1)] min-h-[140px] flex flex-col justify-center">
+          <span className="text-[10px] uppercase tracking-widest text-teal-500 font-bold mb-3 block">Did you know?</span>
+          <div className="relative flex-1 flex items-center justify-center">
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={loadingFact}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.3 }}
+                className="text-sm text-slate-300 font-medium leading-relaxed w-full"
+              >
+                "{loadingFact || "Summoning the chemistry AI..."}"
+              </motion.p>
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
     );
   }

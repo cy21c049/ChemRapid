@@ -32,3 +32,15 @@ export const useSessionStore = create<SessionState>((set) => ({
   startSession: (sessionId, questions, category, subtopics) => set({ currentSessionId: sessionId, questions, category, subtopics }),
   endSession: () => set({ currentSessionId: null, questions: [], category: null, subtopics: [] }),
 }));
+
+interface CoachState {
+  weakTopics: string[];
+  uncoveredTopics: string[];
+  setCoachData: (weak: string[], uncovered: string[]) => void;
+}
+
+export const useCoachStore = create<CoachState>((set) => ({
+  weakTopics: [],
+  uncoveredTopics: [],
+  setCoachData: (weak, uncovered) => set({ weakTopics: weak, uncoveredTopics: uncovered }),
+}));

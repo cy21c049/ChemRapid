@@ -1,15 +1,18 @@
-import { ArrowLeft, Flame, Target, ListChecks, Award, Bookmark } from "lucide-react";
+import { ArrowLeft, Flame, Target, ListChecks, Award, Bookmark, Activity, UserCog } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store";
 import { useEffect, useState } from "react";
 import { getUserSessions } from "../lib/db";
 import { format } from "date-fns";
+import { cn } from "../lib/utils";
+import { CoachView } from "../components/CoachView";
 
 export default function Dashboard() {
   const profile = useAuthStore(state => state.profile);
   const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'coach'>('overview');
 
   useEffect(() => {
     if (user) {
@@ -44,72 +47,101 @@ export default function Dashboard() {
       </nav>
 
       <main className="relative z-10 flex-1 max-w-5xl mx-auto w-full p-6 md:p-10 space-y-8">
-        {/* Main Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500 transform group-hover:scale-110 transition-transform"><Flame size={64}/></div>
-            <div className="flex items-center gap-2 text-orange-500 mb-4 relative z-10">
-              <Flame size={20} />
-              <span className="font-semibold text-[11px] uppercase tracking-wider">Streak</span>
-            </div>
-            <div className="text-4xl font-black text-slate-100 relative z-10">{profile?.currentStreak || 0}</div>
-            <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">BEST: {profile?.bestStreak || 0}</div>
-          </div>
-          
-          <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 text-teal-500 transform group-hover:scale-110 transition-transform"><Target size={64}/></div>
-            <div className="flex items-center gap-2 text-teal-500 mb-4 relative z-10">
-              <Target size={20} />
-              <span className="font-semibold text-[11px] uppercase tracking-wider">Accuracy</span>
-            </div>
-            <div className="text-4xl font-black text-slate-100 relative z-10">{accuracy}<span className="text-xl text-teal-500/50 font-medium ml-1">%</span></div>
-            <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">OVERALL AVG</div>
-          </div>
-
-          <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
-             <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-500 transform group-hover:scale-110 transition-transform"><ListChecks size={64}/></div>
-            <div className="flex items-center gap-2 text-blue-500 mb-4 relative z-10">
-              <ListChecks size={20} />
-              <span className="font-semibold text-[11px] uppercase tracking-wider">Attempted</span>
-            </div>
-            <div className="text-4xl font-black text-slate-100 relative z-10">{totalQuestions}</div>
-            <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">QUESTIONS</div>
-          </div>
-          
-          <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
-             <div className="absolute top-0 right-0 p-4 opacity-10 text-rose-500 transform group-hover:scale-110 transition-transform"><Award size={64}/></div>
-            <div className="flex items-center gap-2 text-rose-500 mb-4 relative z-10">
-              <Award size={20} />
-              <span className="font-semibold text-[11px] uppercase tracking-wider">Sessions</span>
-            </div>
-            <div className="text-4xl font-black text-slate-100 relative z-10">{sessions.length}</div>
-            <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">COMPLETED</div>
-          </div>
-        </div>
-
-        {/* Recent Sessions */}
-        <div>
-          <h2 className="text-lg font-bold mb-6 text-slate-200">Recent Sessions</h2>
-          <div className="space-y-3">
-            {sessions.length === 0 ? (
-              <p className="text-slate-500 text-sm">No sessions yet. Start practicing!</p>
-            ) : (
-              sessions.slice(0, 50).map((session, i) => (
-                <div key={i} onClick={() => navigate(`/session-review/${session.id}`)} className="bg-slate-900/40 border border-slate-800/50 p-5 rounded-2xl flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer group hover:border-teal-500/30">
-                  <div>
-                    <h3 className="font-bold text-sm text-teal-400 group-hover:text-teal-300">{session.category}</h3>
-                    <p className="text-xs text-slate-300 mt-1">{session.subtopic}</p>
-                    <p className="text-[10px] text-slate-500 mt-2 font-mono">{format(new Date(session.startedAt), 'MMM d, yyyy · HH:mm')}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-black text-xl text-slate-100 group-hover:text-white">{session.score} <span className="text-slate-600 text-sm font-normal">/ {session.total}</span></div>
-                    <div className="text-xs font-mono font-bold mt-1 text-teal-500">{Math.round((session.score / session.total) * 100)}%</div>
-                  </div>
-                </div>
-              ))
+        
+        {/* Navigation Tabs */}
+        <div className="flex p-1 bg-slate-900/60 border border-slate-800 rounded-2xl max-w-sm">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-bold transition-all",
+              activeTab === 'overview' ? "bg-slate-800 text-teal-400 shadow-md" : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
             )}
-          </div>
+          >
+            <Activity size={16} /> Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('coach')}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-bold transition-all",
+              activeTab === 'coach' ? "bg-slate-800 text-indigo-400 shadow-md" : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
+            )}
+          >
+            <UserCog size={16} /> AI Coach
+          </button>
         </div>
+
+        {activeTab === 'overview' ? (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Main Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+              <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 text-orange-500 transform group-hover:scale-110 transition-transform"><Flame size={64}/></div>
+                <div className="flex items-center gap-2 text-orange-500 mb-4 relative z-10">
+                  <Flame size={20} />
+                  <span className="font-semibold text-[11px] uppercase tracking-wider">Streak</span>
+                </div>
+                <div className="text-4xl font-black text-slate-100 relative z-10">{profile?.currentStreak || 0}</div>
+                <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">BEST: {profile?.bestStreak || 0}</div>
+              </div>
+              
+              <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 text-teal-500 transform group-hover:scale-110 transition-transform"><Target size={64}/></div>
+                <div className="flex items-center gap-2 text-teal-500 mb-4 relative z-10">
+                  <Target size={20} />
+                  <span className="font-semibold text-[11px] uppercase tracking-wider">Accuracy</span>
+                </div>
+                <div className="text-4xl font-black text-slate-100 relative z-10">{accuracy}<span className="text-xl text-teal-500/50 font-medium ml-1">%</span></div>
+                <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">OVERALL AVG</div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
+                 <div className="absolute top-0 right-0 p-4 opacity-10 text-blue-500 transform group-hover:scale-110 transition-transform"><ListChecks size={64}/></div>
+                <div className="flex items-center gap-2 text-blue-500 mb-4 relative z-10">
+                  <ListChecks size={20} />
+                  <span className="font-semibold text-[11px] uppercase tracking-wider">Attempted</span>
+                </div>
+                <div className="text-4xl font-black text-slate-100 relative z-10">{totalQuestions}</div>
+                <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">QUESTIONS</div>
+              </div>
+              
+              <div className="bg-slate-900/60 border border-slate-700/50 p-6 rounded-3xl relative overflow-hidden group">
+                 <div className="absolute top-0 right-0 p-4 opacity-10 text-rose-500 transform group-hover:scale-110 transition-transform"><Award size={64}/></div>
+                <div className="flex items-center gap-2 text-rose-500 mb-4 relative z-10">
+                  <Award size={20} />
+                  <span className="font-semibold text-[11px] uppercase tracking-wider">Sessions</span>
+                </div>
+                <div className="text-4xl font-black text-slate-100 relative z-10">{sessions.length}</div>
+                <div className="text-xs text-slate-400 mt-2 font-mono relative z-10">COMPLETED</div>
+              </div>
+            </div>
+
+            {/* Recent Sessions */}
+            <div>
+              <h2 className="text-lg font-bold mb-6 text-slate-200">Recent Sessions</h2>
+              <div className="space-y-3">
+                {sessions.length === 0 ? (
+                  <p className="text-slate-500 text-sm">No sessions yet. Start practicing!</p>
+                ) : (
+                  sessions.slice(0, 50).map((session, i) => (
+                    <div key={i} onClick={() => navigate(`/session-review/${session.id}`)} className="bg-slate-900/40 border border-slate-800/50 p-5 rounded-2xl flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer group hover:border-teal-500/30">
+                      <div>
+                        <h3 className="font-bold text-sm text-teal-400 group-hover:text-teal-300">{session.category}</h3>
+                        <p className="text-xs text-slate-300 mt-1">{session.subtopic}</p>
+                        <p className="text-[10px] text-slate-500 mt-2 font-mono">{format(new Date(session.startedAt), 'MMM d, yyyy · HH:mm')}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-black text-xl text-slate-100 group-hover:text-white">{session.score} <span className="text-slate-600 text-sm font-normal">/ {session.total}</span></div>
+                        <div className="text-xs font-mono font-bold mt-1 text-teal-500">{Math.round((session.score / session.total) * 100)}%</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <CoachView sessions={sessions} />
+        )}
       </main>
     </div>
   );

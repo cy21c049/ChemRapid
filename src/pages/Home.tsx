@@ -1,12 +1,71 @@
 import { useNavigate } from "react-router-dom";
-import { useAuthStore } from "../store";
-import { CATEGORIES } from "../lib/constants";
+import { useAuthStore, useCoachStore } from "../store";
+import { CATEGORIES, EXACT_SYLLABUS_TOPICS } from "../lib/constants";
 import { Flame, LogOut, Settings, BarChart2 } from "lucide-react";
 import { auth } from "../lib/firebase";
+import { useEffect } from "react";
+import { getUserSessions, getAttempts } from "../lib/db";
 
 export default function Home() {
   const profile = useAuthStore((state) => state.profile);
+  const user = useAuthStore((state) => state.user);
+  const setCoachData = useCoachStore((state) => state.setCoachData);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    async function backgroundCoachAnalysis() {
+      if (!user) return;
+      const sessions = await getUserSessions(user.uid);
+      
+      const topicStats: Record<string, { correct: number, total: number }> = {};
+      
+      const allSyllabusTopics = Object.values(EXACT_SYLLABUS_TOPICS).flat();
+      
+      // Analyze recent sessions
+      for (const s of sessions) {
+        // Fast tracking if a standard single topic session
+        if (allSyllabusTopics.includes(s.subtopic)) {
+           if (!topicStats[s.subtopic]) topicStats[s.subtopic] = { correct: 0, total: 0 };
+           topicStats[s.subtopic].correct += s.score;
+           topicStats[s.subtopic].total += s.total;
+        } else if (s.subtopic === "Trail Mix" || s.subtopic === "Mixed Selection" || s.category === "Full Mock Test") {
+           // We'd have to get attempts, just limit to top 5 recent mixed sessions
+        }
+      }
+
+      // Detailed attempt level for last 5 sessions
+      const detailedSessions = await Promise.all(
+        sessions.slice(0, 5).map(async (s) => {
+          const attempts = await getAttempts(s.id);
+          return { ...s, attempts };
+        })
+      );
+
+      for (const s of detailedSessions) {
+        for (const att of s.attempts) {
+           if (att.question && att.question.subtopic) {
+              const sub = att.question.subtopic;
+              if (!topicStats[sub]) topicStats[sub] = { correct: 0, total: 0 };
+              topicStats[sub].total += 1;
+              if (att.isCorrect) {
+                topicStats[sub].correct += 1;
+              }
+           }
+        }
+      }
+
+      const covered = Object.keys(topicStats);
+      const uncovered = allSyllabusTopics.filter(t => !covered.includes(t));
+      
+      const weak = Object.entries(topicStats)
+        .filter(([_, stats]) => stats.total > 0 && (stats.correct / stats.total) < 0.6)
+        .map(([topic]) => topic);
+
+      setCoachData(weak, uncovered);
+      console.log("Background Coach Analysis Complete: ", { weak, uncovered });
+    }
+    backgroundCoachAnalysis();
+  }, [user]);
 
   const handleSignOut = async () => {
     await auth.signOut();
@@ -42,13 +101,26 @@ export default function Home() {
       </nav>
 
       <main className="relative z-10 flex-1 max-w-5xl mx-auto w-full p-6 md:p-10">
-        <div className="mb-10 text-center md:text-left">
-          <span className="inline-block px-3 py-1 rounded bg-teal-500/10 border border-teal-500/20 text-teal-400 text-[10px] font-bold uppercase tracking-wider mb-4">
-            Practice Hub
-          </span>
-          <h2 className="text-3xl md:text-4xl font-medium leading-relaxed text-slate-100">
-            Choose a Chemistry Category
-          </h2>
+        <div className="mb-10 text-center md:text-left flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <span className="inline-block px-3 py-1 rounded bg-teal-500/10 border border-teal-500/20 text-teal-400 text-[10px] font-bold uppercase tracking-wider mb-4">
+              Practice Hub
+            </span>
+            <h2 className="text-3xl md:text-4xl font-medium leading-relaxed text-slate-100">
+              Choose a Chemistry Category
+            </h2>
+          </div>
+          <button 
+            onClick={() => navigate('/mock-test')}
+            className="group relative bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-bold py-4 px-8 rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition-all hover:-translate-y-1 overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></div>
+            <div className="relative z-10 flex items-center justify-center gap-3">
+              <span className="text-xl">🏆</span>
+              <span>Take Full Mock Test</span>
+              <span className="text-indigo-200 text-sm font-normal">• 50 Qs</span>
+            </div>
+          </button>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -14,6 +14,7 @@ import Summary from './pages/Summary';
 import Dashboard from './pages/Dashboard';
 import SessionReview from './pages/SessionReview';
 import Bookmarks from './pages/Bookmarks';
+import MockTest from './pages/MockTest';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((state) => state.user);
@@ -102,6 +103,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Bookmarks />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/mock-test" 
+            element={
+              <ProtectedRoute>
+                <MockTest />
               </ProtectedRoute>
             } 
           />
